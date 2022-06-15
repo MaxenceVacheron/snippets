@@ -1,0 +1,76 @@
+COLOR_BLUE   = \033[0;34m
+COLOR_GREEN  = \033[0;32m
+COLOR_PURPLE = \033[0;35m
+COLOR_RED    = \033[0;31m
+COLOR_RESET  = \033[m
+COLOR_YELLOW = \033[0;33m
+
+APP_CMD      = $(DC_CMD) exec app
+COMPOSER_CMD = $(APP_CMD) composer
+DC_CMD       = docker-compose
+HOSTS_DOMAIN = noow.local.io
+HOSTS_FILE   = /etc/hosts
+SF           = $(APP_CMD) bin/console
+YARN_CMD     = $(APP_CMD) yarn
+
+##
+## Application
+##
+
+build: ## Build docker
+	$(DC_CMD) build
+
+up: ## Up docker
+	$(DC_CMD) up -d
+
+start: ## Start project
+start: build up vendor
+
+install: ## Install project
+install: build up vendor wait-db migrate-db yarn-install yarn-dev
+
+wait-db:
+	bash docker/wait-db.sh
+
+migrate-db: ## Execute SQL migrations
+	$(SF) doctrine:migrations:migrate --no-interaction
+
+yarn-install: ## Install yarn dependencies
+	$(YARN_CMD) install
+
+yarn-dev: ## Compile front asset
+	$(YARN_CMD) dev
+
+yarn-watch: ## Compile front asset watch mode
+	$(YARN_CMD) watch
+
+logs: ## Docker logs
+	$(DC_CMD) logs -f
+
+sh: ## Sh into php docker
+	$(APP_CMD) sh
+
+vendor: composer.lock
+	$(COMPOSER_CMD) install
+
+.PHONY: build up start install wait-db migrate-db yarn-install yarn-dev yarn-watch logs sh
+
+##
+## Configuration
+##
+
+hosts: ## Update /etc/hosts
+	@if ! grep -q "$(HOSTS_DOMAIN)" $(HOSTS_FILE);\
+	then\
+		sudo sh -c "echo '127.0.0.1 $(HOSTS_DOMAIN)' >> /etc/hosts";\
+		echo "$(COLOR_GREEN)[hosts]: /etc/hosts file has been updated$(COLOR_RESET)";\
+	else\
+		echo "$(COLOR_YELLOW)[hosts]: /etc/hosts file is already up to date$(COLOR_RESET)";\
+	fi
+
+.PHONY: hosts
+
+.DEFAULT_GOAL := help
+help: ## Help
+	@grep -E '(^[a-zA-Z_-]+:.*?##.*$$)|(^##)' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[32m%-30s\033[0m %s\n", $$1, $$2}' | sed -e 's/\[32m##/[33m/'
+.PHONY: help
